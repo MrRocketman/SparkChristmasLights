@@ -653,9 +653,9 @@ void handleZeroCross()
     {
         pwmFrequency = 120.0;
     }
-    // Update the dimming interrupt timer
     
-    dimmingTimer.resetPeriod_SIT((1000000 / (pwmFrequency * (maxBrightness + 1))), uSec);
+    // Update the dimming interrupt timer
+    dimmingTimer.resetPeriod_SIT((uint16_t)(1000000 / (pwmFrequency * (maxBrightness + 1))), uSec);
     
     // Handle AC dimming (fading over time)
     updateDimming = 1;
@@ -665,7 +665,7 @@ void handleZeroCross()
 
 void initDimmingTimer()
 {
-    dimmingTimer.begin(handleDimmingTimerInterrupt, (1000000 / (pwmFrequency * (maxBrightness + 1))), uSec);
+    dimmingTimer.begin(handleDimmingTimerInterrupt, (uint16_t)(1000000 / (pwmFrequency * (maxBrightness + 1))), uSec);
 }
 
 void handleDimmingTimerInterrupt()
@@ -701,10 +701,10 @@ void handleDimmingTimerInterrupt()
         for(byte i2 = 1; i2 < 8; i2 ++)
         {
             byteToSend >>= 1;
-            //if(*(--tempPWMValues) > currentBrightnessCounter)
-            //{
-            byteToSend |= 0b10000000;
-            //}
+            if(*(--tempPWMValues) > currentBrightnessCounter)
+            {
+                byteToSend |= 0b10000000;
+            }
         }
         
         // Send the byte to the SPI
@@ -783,4 +783,3 @@ void dimmingTest()
 }
 
 #endif
-
