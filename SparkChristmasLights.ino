@@ -4,6 +4,8 @@
 // This #include statement was automatically added by the Spark IDE.
 #include "neopixel/neopixel.h"
 
+#include "documentation.h"
+
 // IMPORTANT: Set pixel COUNT, PIN and TYPE
 #define PIXEL_COUNT 16
 #define PIXEL_PIN D2
@@ -28,7 +30,7 @@
 // and minimize distance between Arduino and first pixel.  Avoid connecting
 // on a live circuit...if you must, connect GND first.
 
-Adafruit_NeoPixel strip = Adafruit_NeoPixel(PIXEL_COUNT, PIXEL_PIN, PIXEL_TYPE);
+//Adafruit_NeoPixel strip = Adafruit_NeoPixel(PIXEL_COUNT, PIXEL_PIN, PIXEL_TYPE);
 
 TCPClient client;
 
@@ -52,7 +54,7 @@ TCPClient client;
 //#define TESTING // Uncomment to enable all channel testing
 
 // Board specific variables! Change these per board!,
-byte numberOfShiftRegisters = 3;
+byte numberOfShiftRegisters = 4;
 #define AC_LIGHTS 1 // Set to 0 for DC lights
 
 /////////////////////////////////////////////////////////////////////////////////////////////
@@ -64,7 +66,7 @@ byte numberOfShiftRegisters = 3;
 
 // The macro below uses 3 instructions per pin to generate the byte to transfer with SPI for the shift registers. Retreive duty cycle setting from memory (ldd, 2 clockcycles). Compare with the counter (cp, 1 clockcycle) --> result is stored in carry. Use the rotate over carry right to shift the compare result into the byte. (1 clockcycle).
 // TL;DR super fast way of doing the following
-// if(counter < pwmVal)
+// if(counter > pwmVal)
 //      turnOn;
 // else
 //      turnOff;
@@ -98,7 +100,7 @@ byte maxBrightness = 255;
 byte minBrightness = 0; // compensates for no light at < 20% dim. 14 for AC, 0 for DC
 byte numberOfChannels = 0;
 byte *pwmValues = 0;
-volatile byte shiftRegisterCurrentBrightnessIndex = maxBrightness;
+volatile byte currentBrightnessCounter = maxBrightness;
 
 // Dimming variables
 float *brightnessChangePerDimmingCycle = 0;
@@ -124,7 +126,7 @@ void fadeChannelNumberToBrightnessWithMillisecondsDuration(byte channelNumber, b
 bool isChannelNumberValid(byte channelNumber);
 
 // Zero Cross
-void zeroCrossDetect();
+void handleZeroCross();
 
 // ShiftRegister
 void handleDimmingTimerInterrupt();
@@ -135,17 +137,6 @@ void printInterruptLoad();
 void dimmingUpdate();
 
 #pragma mark - Setup And Main Loop
-
-// free RAM check for debugging. SRAM for ATmega328p = 2048Kb.
-int availableMemory()
-{
-    // Use 1024 with ATmega168
-    int size = 2048;
-    byte *buf;
-    while ((buf = (byte *) malloc(--size)) == NULL);
-    free(buf);
-    return size;
-}
 
 void setup()
 {
@@ -165,35 +156,35 @@ void setup()
     Serial.begin(57600); // Xbee doesn't like to run any faster than 57600 for sustained throughput!
     
     // SPI Setup
-    SPI.begin();
     SPI.setBitOrder(LSBFIRST);
     SPI.setClockDivider(SPI_CLOCK_DIV16);
     SPI.setDataMode(SPI_MODE3);
+    SPI.begin();
     
     // Initialize Dimming Timer
     initDimmingTimer();
     
     // Setup the zero cross interrupt which uses zeroCrossPin (zeroCrossPin can't be changed though)
-    attachInterrupt(0, zeroCrossDetect, FALLING);
+    attachInterrupt(A6, handleZeroCross, FALLING);
     
     // Init our variables for the appropriate number of shift registers
     initializeWithewShiftRegisterCount();
-
-    strip.begin();
-    strip.show(); // Initialize all pixels to 'off'
+    
+    //strip.begin();
+    //strip.show(); // Initialize all pixels to 'off'
 }
 
-void loop() 
+void loop()
 {
-    /*if (client.connected()) 
-    {
-        if (client.available()) 
-        {
-            
-        }
-    }*/
+    /*if (client.connected())
+     {
+     if (client.available())
+     {
+     
+     }
+     }*/
     
-     // Handle dimming
+    // Handle dimming
     if(updateDimming)
     {
         dimmingUpdate();
@@ -229,7 +220,7 @@ void loop()
     }
 }
 
-void ipArrayFromString(byte ipArray[], String ipString) 
+void ipArrayFromString(byte ipArray[], String ipString)
 {
     int dot1 = ipString.indexOf('.');
     ipArray[0] = ipString.substring(0, dot1).toInt();
@@ -240,16 +231,16 @@ void ipArrayFromString(byte ipArray[], String ipString)
     ipArray[3] = ipString.substring(dot1 + 1).toInt();
 }
 
-int connectToMyServer(String ip) 
+int connectToMyServer(String ip)
 {
     byte serverAddress[4];
     ipArrayFromString(serverAddress, ip);
-
-    if (client.connect(serverAddress, 9000)) 
+    
+    if (client.connect(serverAddress, 9000))
     {
         return 1; // successfully connected
-    } 
-    else 
+    }
+    else
     {
         return -1; // failed to connect
     }
@@ -273,9 +264,9 @@ int ledControl(String command)
 
 void processPacket()
 {
-     // Read in the commandID byte
+    // Read in the commandID byte
     byte commandID = readNextByteInPacket();
-        
+    
     if(commandID == 0x00) // Command 0x00 (1 channel on)
     {
         turnOnChannel(readNextByteInPacket());
@@ -437,12 +428,12 @@ void processPacket()
                 fadeChannelNumberFromBrightnessToBrightnessWithMillisecondsDuration(i, startBrightness, endBrightness, fadeTimeInTenthsOfSeconds * 100);
             }
         }
-        }
-        else if(commandID == 0xF1) // Command 0xF1 (Request status - number of boards connected)
-        {
-            Serial.println(numberOfShiftRegisters);
-        }
     }
+    else if(commandID == 0xF1) // Command 0xF1 (Request status - number of boards connected)
+    {
+        Serial.println(numberOfShiftRegisters);
+    }
+}
 
 byte readNextByteInPacket()
 {
@@ -630,14 +621,14 @@ void initializeWithewShiftRegisterCount()
     dimmingUpdatesCount = (unsigned short *)malloc(numberOfChannels * sizeof(unsigned short));
     // Initialize dimmingUpdatesCount array to 0
     memset(dimmingUpdatesCount, 0, numberOfChannels * sizeof(unsigned short));
-        
+    
 #ifdef TESTING
     // Malloc dimmingDirection array
     dimmingDirection = (byte *)malloc(numberOfChannels * sizeof(byte));
     // Initialize dimmingDirection array to 0
     memset(dimmingDirection, 0, numberOfChannels * sizeof(byte));
 #endif
-        
+    
     // Re-enable interrupt
     interrupts();
 }
@@ -645,12 +636,6 @@ void initializeWithewShiftRegisterCount()
 #pragma mark - Zero Cross
 
 // Hardware zero cross interrupt
-void zeroCrossDetect()
-{
-    handleZeroCross();
-}
-
-// Handle the zero cross
 void handleZeroCross()
 {
     // Calculate the frequency
@@ -669,17 +654,20 @@ void handleZeroCross()
         pwmFrequency = 120.0;
     }
     // Update the dimming interrupt timer
-    dimmingTimer.resetPeriod_SIT((1000000 / (pwmFrequency * ((float)maxBrightness + 1))), uSec);
+    
+    //dimmingTimer.resetPeriod_SIT((1000000 / (pwmFrequency * (maxBrightness + 1))), uSec);
     
     // Handle AC dimming (fading over time)
     updateDimming = 1;
+    
+    //handleDimmingTimerInterrupt();
 }
 
 #pragma mark - Shift Register
 
 void initDimmingTimer()
 {
-    dimmingTimer.begin(handleDimmingTimerInterrupt, (1000000 / (pwmFrequency * ((float)maxBrightness + 1))), uSec);
+    dimmingTimer.begin(handleDimmingTimerInterrupt, 35, uSec);
 }
 
 void handleDimmingTimerInterrupt()
@@ -691,19 +679,30 @@ void handleDimmingTimerInterrupt()
     digitalWrite(latchPin, LOW);
     
     // Do a whole shift register at once. This unrolls the loop for extra speed
-    for(unsigned char i = numberOfShiftRegisters; i > 0; --i)
+    for(byte i = numberOfShiftRegisters; i > 0; --i)
     {
-        unsigned char sendbyte;  // no need to initialize, all bits are replaced
+        /*byte sendbyte;  // no need to initialize, all bits are replaced
+        
+         // Build the byte. One bit for each channel in this shift register
+         add_one_pin_to_byte(sendbyte, currentBrightnessCounter, --tempPWMValues);
+         add_one_pin_to_byte(sendbyte, currentBrightnessCounter, --tempPWMValues);
+         add_one_pin_to_byte(sendbyte, currentBrightnessCounter, --tempPWMValues);
+         add_one_pin_to_byte(sendbyte, currentBrightnessCounter, --tempPWMValues);
+         add_one_pin_to_byte(sendbyte, currentBrightnessCounter, --tempPWMValues);
+         add_one_pin_to_byte(sendbyte, currentBrightnessCounter, --tempPWMValues);
+         add_one_pin_to_byte(sendbyte, currentBrightnessCounter, --tempPWMValues);
+         add_one_pin_to_byte(sendbyte, currentBrightnessCounter, --tempPWMValues);*/
         
         // Build the byte. One bit for each channel in this shift register
-        add_one_pin_to_byte(sendbyte, shiftRegisterCurrentBrightnessIndex, --tempPWMValues);
-        add_one_pin_to_byte(sendbyte, shiftRegisterCurrentBrightnessIndex, --tempPWMValues);
-        add_one_pin_to_byte(sendbyte, shiftRegisterCurrentBrightnessIndex, --tempPWMValues);
-        add_one_pin_to_byte(sendbyte, shiftRegisterCurrentBrightnessIndex, --tempPWMValues);
-        add_one_pin_to_byte(sendbyte, shiftRegisterCurrentBrightnessIndex, --tempPWMValues);
-        add_one_pin_to_byte(sendbyte, shiftRegisterCurrentBrightnessIndex, --tempPWMValues);
-        add_one_pin_to_byte(sendbyte, shiftRegisterCurrentBrightnessIndex, --tempPWMValues);
-        add_one_pin_to_byte(sendbyte, shiftRegisterCurrentBrightnessIndex, --tempPWMValues);
+        byte byteToSend = 0x00;
+        for(byte i2 = 0; i2 < 8; i2 ++)
+        {
+            byteToSend >> 1;
+            if(*(--tempPWMValues) > currentBrightnessCounter)
+            {
+                byteToSend |= 0b10000000;
+            }
+        }
         
         // Send the byte to the SPI
         SPI.transfer(sendbyte);
@@ -713,9 +712,9 @@ void handleDimmingTimerInterrupt()
     digitalWrite(latchPin, HIGH);
     
     // Decrease the brightness index. This is the key to getting AC dimming since triacs stay on until the next zero cross. So we need to turn on after a delay rather than turn on immediately and turn off after a delay. AKA, this needs to count down not up. Trust me!
-    if(shiftRegisterCurrentBrightnessIndex > 0)
+    if(currentBrightnessCounter > 0)
     {
-        shiftRegisterCurrentBrightnessIndex --;
+        currentBrightnessCounter --;
     }
     else
     {
@@ -729,7 +728,7 @@ void handleDimmingTimerInterrupt()
 void dimmingUpdate()
 {
     // Reset the brightness index to be in phase with the zero cross
-    shiftRegisterCurrentBrightnessIndex = maxBrightness;
+    currentBrightnessCounter = maxBrightness;
     
 #ifdef TESTING
     dimmingTest();
@@ -780,4 +779,3 @@ void dimmingTest()
 }
 
 #endif
-
