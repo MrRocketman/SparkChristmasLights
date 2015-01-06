@@ -655,19 +655,17 @@ void handleZeroCross()
     }
     // Update the dimming interrupt timer
     
-    //dimmingTimer.resetPeriod_SIT((1000000 / (pwmFrequency * (maxBrightness + 1))), uSec);
+    dimmingTimer.resetPeriod_SIT((1000000 / (pwmFrequency * (maxBrightness + 1))), uSec);
     
     // Handle AC dimming (fading over time)
     updateDimming = 1;
-    
-    //handleDimmingTimerInterrupt();
 }
 
 #pragma mark - Shift Register
 
 void initDimmingTimer()
 {
-    dimmingTimer.begin(handleDimmingTimerInterrupt, 35, uSec);
+    dimmingTimer.begin(handleDimmingTimerInterrupt, (1000000 / (pwmFrequency * (maxBrightness + 1))), uSec);
 }
 
 void handleDimmingTimerInterrupt()
