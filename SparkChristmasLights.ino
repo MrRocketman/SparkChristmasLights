@@ -51,10 +51,11 @@ byte numberOfShiftRegisters = 4;
 
 #define MICROSECONDS_TO_MILLISECONDS 1 / 1000.0
 #define MILLISECONDS_TO_SECONDS 1 / 1000.0
+#define MAX_PACKET_LENGTH 32
 
 // The macro below uses 3 instructions per pin to generate the byte to transfer with SPI for the shift registers. Retreive duty cycle setting from memory (ldd, 2 clockcycles). Compare with the counter (cp, 1 clockcycle) --> result is stored in carry. Use the rotate over carry right to shift the compare result into the byte. (1 clockcycle).
 // TL;DR super fast way of doing the following
-// if(counter > pwmVal)
+// if(pwmValue > counter)
 //      turnOn;
 // else
 //      turnOff;
@@ -69,12 +70,12 @@ asm volatile ("rrx %0, %1" : "=r" (sendByte) : "r" (sendByte)); 	\
 uint32_t previousZeroCrossTime = 0; // Timestamp in micros() of the latest zero crossing interrupt
 uint32_t currentZeroCrossTime = 0; // Timestamp in micros() of the previous zero crossing interrupt
 uint32_t zeroCrossTimeDifference =  8333; // 120Hz The calculated micros() between the last two zero crossings
-byte zeroCrossPin = A6;
+const int zeroCrossPin = A6;
 IntervalTimer dimmingTimer;
 
 // Serial Packet Variables
 const byte endOfPacketByte = 0xFF; // ASCII value 255 is our end of command byte
-byte packetBuffer[MAX_PACKET_SIZE]; // buffer for serial data
+byte packetBuffer[MAX_PACKET_LENGTH]; // buffer for serial data
 byte packetBufferLength = 0;
 byte currentByteFromPacket = 0;
 byte currentByteIndex = 0;
@@ -152,7 +153,7 @@ void setup()
     initDimmingTimer();
     
     // Setup the zero cross interrupt which uses zeroCrossPin (zeroCrossPin can't be changed though)
-    attachInterrupt(A6, handleZeroCross, FALLING);
+    attachInterrupt(zeroCrossPin, handleZeroCross, FALLING);
     
     // Init our variables for the appropriate number of shift registers
     initializeWithewShiftRegisterCount();
@@ -178,7 +179,7 @@ void loop()
         updateDimming = 0;
     }
     
-    // Handle XBee data
+    // Handle Serial data
     if(Serial.available())
     {
         // Read in a byte and store it
@@ -195,7 +196,7 @@ void loop()
         else
         {
             // Somehow the buffer has overflowed. Erase it since it's probably just garbage
-            if(packetBufferLength > MAX_PACKET_SIZE)
+            if(packetBufferLength > MAX_PACKET_LENGTH)
             {
 #ifdef SERIAL_PRINTING
                 Serial.println("Buffer overflow");
@@ -445,7 +446,7 @@ void clearPacketBuffer()
     currentByteIndex = 0;
     
     // Set our packetBuffer to all 0's (nils)
-    memset(packetBuffer, 0, MAX_PACKET_SIZE * sizeof(byte));
+    memset(packetBuffer, 0, MAX_PACKET_LENGTH * sizeof(byte));
 }
 
 #pragma mark - Channel Changes
@@ -681,7 +682,11 @@ void handleDimmingTimerInterrupt()
          {
          byteToSend |= 0b10000000;
          }
-         }*/
+         }
+         
+         // Send the byte to the SPI
+         SPI.transfer(byteToSend);
+         */
         
         // Send the byte to the SPI
         SPI.transfer(byteToSend >> 24);
