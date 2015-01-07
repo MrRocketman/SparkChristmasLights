@@ -669,6 +669,9 @@ void handleDimmingTimerInterrupt()
         add_one_pin_to_byte(byteToSend, currentBrightnessCounter, --tempPWMValues);
         add_one_pin_to_byte(byteToSend, currentBrightnessCounter, --tempPWMValues);
         
+        // Send the byte to the SPI
+        SPI.transfer(byteToSend >> 24);
+        
         // Build the byte. One bit for each channel in this shift register
         /*byte byteToSend = 0x00;
          if(*(--tempPWMValues) > currentBrightnessCounter)
@@ -687,9 +690,6 @@ void handleDimmingTimerInterrupt()
          // Send the byte to the SPI
          SPI.transfer(byteToSend);
          */
-        
-        // Send the byte to the SPI
-        SPI.transfer(byteToSend >> 24);
     }
     
     // Write shift register latch clock high
