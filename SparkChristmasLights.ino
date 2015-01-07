@@ -70,18 +70,17 @@ byte numberOfShiftRegisters = 4;
 //      turnOn;
 // else
 //      turnOff;
-#define add_one_pin_to_byte(sendByte, counter, tempPWMValues) \
+#define add_one_pin_to_byte(sendByte, counter, pwmPointer) \
 { \
-byte pwmval=*tempPWMValues; \
-asm volatile ("cmp %0, %1" : /* No outputs */ : "r" (counter), "r" (pwmval)); \
+byte pwmValue = *pwmPointer; \
+asm volatile ("cmp %0, %1" : /* No outputs */ : "r" (counter), "r" (pwmValue)); \
 asm volatile ("rrx %0, %1" : "=r" (sendByte) : "r" (sendByte)); 	\
 }
 
 // Phase Frequency Control (PFC) (Zero Cross)
-float pwmFrequency = 120;
-unsigned long int previousZeroCrossTime = 0; // Timestamp in micros() of the latest zero crossing interrupt
-unsigned long int currentZeroCrossTime = 0; // Timestamp in micros() of the previous zero crossing interrupt
-unsigned long int zeroCrossTimeDifference =  (unsigned long)(1000000 / pwmFrequency); // The calculated micros() between the last two zero crossings
+uint32_t previousZeroCrossTime = 0; // Timestamp in micros() of the latest zero crossing interrupt
+uint32_t currentZeroCrossTime = 0; // Timestamp in micros() of the previous zero crossing interrupt
+uint32_t zeroCrossTimeDifference =  8333; // 120Hz The calculated micros() between the last two zero crossings
 byte zeroCrossPin = A6;
 IntervalTimer dimmingTimer;
 
@@ -105,7 +104,7 @@ volatile byte currentBrightnessCounter = maxBrightness;
 // Dimming variables
 float *brightnessChangePerDimmingCycle = 0;
 float *temporaryPWMValues = 0;
-unsigned short *dimmingUpdatesCount = 0;
+uint16_t *dimmingUpdatesCount = 0;
 volatile byte updateDimming = 0;
 #ifdef TESTING
 byte *dimmingDirection; // For testing only
@@ -122,7 +121,7 @@ void clearPacketBuffer();
 void turnOnChannel(byte channelNumber);
 void turnOffChannel(byte channelNumber);
 void setBrightnessForChannel(byte channelNumber, byte brightness);
-void fadeChannelNumberToBrightnessWithMillisecondsDuration(byte channelNumber, byte brightness, unsigned long milliseconds);
+void fadeChannelNumberToBrightnessWithMillisecondsDuration(byte channelNumber, byte brightness, uint16_t milliseconds);
 bool isChannelNumberValid(byte channelNumber);
 
 // Zero Cross
@@ -515,7 +514,7 @@ void setBrightnessForChannel(byte channelNumber, byte brightness)
 #endif
 }
 
-void channelBrightnessWithMillisecondsDuration(byte channelNumber, byte brightness, unsigned long milliseconds)
+void channelBrightnessWithMillisecondsDuration(byte channelNumber, byte brightness, uint16_t milliseconds)
 {
     // Set the brightnessChangePerDimmingCycle if the channel is valid
     if(isChannelNumberValid(channelNumber))
@@ -531,7 +530,7 @@ void channelBrightnessWithMillisecondsDuration(byte channelNumber, byte brightne
         }
         pwmValues[channelNumber] = brightness;
         
-        dimmingUpdatesCount[channelNumber] = milliseconds / (1000.0 / pwmFrequency) + 11; // 11 means fade up has 11/120 seconds to get another command before it shuts off
+        dimmingUpdatesCount[channelNumber] = milliseconds / (zeroCrossTimeDifference * MICROSECONDS_TO_MILLISECONDS) + 11; // 11 means fade up has 11/120 seconds to get another command before it shuts off
         brightnessChangePerDimmingCycle[channelNumber] = 0;
         temporaryPWMValues[channelNumber] = pwmValues[channelNumber];
     }
@@ -544,7 +543,7 @@ void channelBrightnessWithMillisecondsDuration(byte channelNumber, byte brightne
 #endif
 }
 
-void fadeChannelNumberFromBrightnessToBrightnessWithMillisecondsDuration(byte channelNumber, byte startBrightness, byte endBrightness, unsigned long milliseconds)
+void fadeChannelNumberFromBrightnessToBrightnessWithMillisecondsDuration(byte channelNumber, byte startBrightness, byte endBrightness, uint16_t milliseconds)
 {
     // Set the brightnessChangePerDimmingCycle if the channel is valid
     if(isChannelNumberValid(channelNumber))
@@ -567,7 +566,7 @@ void fadeChannelNumberFromBrightnessToBrightnessWithMillisecondsDuration(byte ch
         }
         pwmValues[channelNumber] = startBrightness;
         
-        dimmingUpdatesCount[channelNumber] = milliseconds / (1000.0 / pwmFrequency) + 11; // 11 means fade up has 11/120 seconds to get another command before it shuts off
+        dimmingUpdatesCount[channelNumber] = milliseconds / (zeroCrossTimeDifference * MICROSECONDS_TO_MILLISECONDS) + 11; // 11 means fade up has 11/120 seconds to get another command before it shuts off
         brightnessChangePerDimmingCycle[channelNumber] = (float)(endBrightness - startBrightness) / dimmingUpdatesCount[channelNumber];
         temporaryPWMValues[channelNumber] = pwmValues[channelNumber];
     }
@@ -618,9 +617,9 @@ void initializeWithewShiftRegisterCount()
     memset(brightnessChangePerDimmingCycle, 0, numberOfChannels * sizeof(float));
     
     // Malloc dimmingUpdatesCount array
-    dimmingUpdatesCount = (unsigned short *)malloc(numberOfChannels * sizeof(unsigned short));
+    dimmingUpdatesCount = (uint16_t *)malloc(numberOfChannels * sizeof(uint16_t));
     // Initialize dimmingUpdatesCount array to 0
-    memset(dimmingUpdatesCount, 0, numberOfChannels * sizeof(unsigned short));
+    memset(dimmingUpdatesCount, 0, numberOfChannels * sizeof(uint16_t));
     
 #ifdef TESTING
     // Malloc dimmingDirection array
@@ -643,19 +642,8 @@ void handleZeroCross()
     currentZeroCrossTime = micros();
     zeroCrossTimeDifference = currentZeroCrossTime - previousZeroCrossTime;
     
-    // Update he frequency
-    pwmFrequency = 1.0 / (zeroCrossTimeDifference * MICROSECONDS_TO_MILLISECONDS * MILLISECONDS_TO_SECONDS);
-    if(pwmFrequency > 130)
-    {
-        pwmFrequency = 120.0;
-    }
-    else if(pwmFrequency < 90)
-    {
-        pwmFrequency = 120.0;
-    }
-    
     // Update the dimming interrupt timer
-    dimmingTimer.resetPeriod_SIT((uint16_t)(1000000 / (pwmFrequency * (maxBrightness + 1))), uSec);
+    dimmingTimer.resetPeriod_SIT((uint16_t)(zeroCrossTimeDifference / (maxBrightness + 1)), uSec);
     
     // Handle AC dimming (fading over time)
     updateDimming = 1;
@@ -665,7 +653,7 @@ void handleZeroCross()
 
 void initDimmingTimer()
 {
-    dimmingTimer.begin(handleDimmingTimerInterrupt, (uint16_t)(1000000 / (pwmFrequency * (maxBrightness + 1))), uSec);
+    dimmingTimer.begin(handleDimmingTimerInterrupt, (uint16_t)(zeroCrossTimeDifference / (maxBrightness + 1)), uSec);
 }
 
 void handleDimmingTimerInterrupt()
@@ -680,35 +668,35 @@ void handleDimmingTimerInterrupt()
     // Do a whole shift register at once. This unrolls the loop for extra speed
     for(byte i = numberOfShiftRegisters; i > 0; --i)
     {
-        /*byte byteToSend;  // no need to initialize, all bits are replaced
-         
-         // Build the byte. One bit for each channel in this shift register
-         add_one_pin_to_byte(byteToSend, currentBrightnessCounter, --tempPWMValues);
-         add_one_pin_to_byte(byteToSend, currentBrightnessCounter, --tempPWMValues);
-         add_one_pin_to_byte(byteToSend, currentBrightnessCounter, --tempPWMValues);
-         add_one_pin_to_byte(byteToSend, currentBrightnessCounter, --tempPWMValues);
-         add_one_pin_to_byte(byteToSend, currentBrightnessCounter, --tempPWMValues);
-         add_one_pin_to_byte(byteToSend, currentBrightnessCounter, --tempPWMValues);
-         add_one_pin_to_byte(byteToSend, currentBrightnessCounter, --tempPWMValues);
-         add_one_pin_to_byte(byteToSend, currentBrightnessCounter, --tempPWMValues);*/
+        uint32_t byteToSend;  // no need to initialize, all bits are replaced
         
         // Build the byte. One bit for each channel in this shift register
-        byte byteToSend = 0x00;
-        //if(*(--tempPWMValues) > currentBrightnessCounter)
-        //{
-        byteToSend |= 0b10000000;
-        //}
-        for(byte i2 = 1; i2 < 8; i2 ++)
-        {
-            byteToSend >>= 1;
-            if(*(--tempPWMValues) > currentBrightnessCounter)
-            {
-                byteToSend |= 0b10000000;
-            }
-        }
+        add_one_pin_to_byte(byteToSend, currentBrightnessCounter, --tempPWMValues);
+        add_one_pin_to_byte(byteToSend, currentBrightnessCounter, --tempPWMValues);
+        add_one_pin_to_byte(byteToSend, currentBrightnessCounter, --tempPWMValues);
+        add_one_pin_to_byte(byteToSend, currentBrightnessCounter, --tempPWMValues);
+        add_one_pin_to_byte(byteToSend, currentBrightnessCounter, --tempPWMValues);
+        add_one_pin_to_byte(byteToSend, currentBrightnessCounter, --tempPWMValues);
+        add_one_pin_to_byte(byteToSend, currentBrightnessCounter, --tempPWMValues);
+        add_one_pin_to_byte(byteToSend, currentBrightnessCounter, --tempPWMValues);
+        
+        // Build the byte. One bit for each channel in this shift register
+        /*byte byteToSend = 0x00;
+         if(*(--tempPWMValues) > currentBrightnessCounter)
+         {
+         byteToSend |= 0b10000000;
+         }
+         for(byte i2 = 1; i2 < 8; i2 ++)
+         {
+         byteToSend >>= 1;
+         if(*(--tempPWMValues) > currentBrightnessCounter)
+         {
+         byteToSend |= 0b10000000;
+         }
+         }*/
         
         // Send the byte to the SPI
-        SPI.transfer(byteToSend);
+        SPI.transfer(byteToSend >> 24);
     }
     
     // Write shift register latch clock high
