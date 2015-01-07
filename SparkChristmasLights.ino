@@ -3,36 +3,36 @@
 
 // This #include statement was automatically added by the Spark IDE.
 /*#include "neopixel/neopixel.h"
-
-#include "documentation.h"
-
-// IMPORTANT: Set pixel COUNT, PIN and TYPE
-#define PIXEL_COUNT 16
-#define PIXEL_PIN D2
-#define PIXEL_TYPE WS2812B
-
-// Parameter 1 = number of pixels in strip
-// Parameter 2 = pin number (most are valid)
-//               note: if not specified, D2 is selected for you.
-// Parameter 3 = pixel type [ WS2812, WS2812B, WS2811, TM1803 ]
-//               note: if not specified, WS2812B is selected for you.
-//               note: RGB order is automatically applied to WS2811,
-//                     WS2812/WS2812B/TM1803 is GRB order.
-//
-// 800 KHz bitstream 800 KHz bitstream (most NeoPixel products ...
-//                         ... WS2812 (6-pin part)/WS2812B (4-pin part) )
-//
-// 400 KHz bitstream (classic 'v1' (not v2) FLORA pixels, WS2811 drivers)
-//                   (Radio Shack Tri-Color LED Strip - TM1803 driver
-//                    NOTE: RS Tri-Color LED's are grouped in sets of 3)
-// IMPORTANT: To reduce NeoPixel burnout risk, add 1000 uF capacitor across
-// pixel power leads, add 300 - 500 Ohm resistor on first pixel's data input
-// and minimize distance between Arduino and first pixel.  Avoid connecting
-// on a live circuit...if you must, connect GND first.
-
-//Adafruit_NeoPixel strip = Adafruit_NeoPixel(PIXEL_COUNT, PIXEL_PIN, PIXEL_TYPE);
-
-TCPClient client;*/
+ 
+ #include "documentation.h"
+ 
+ // IMPORTANT: Set pixel COUNT, PIN and TYPE
+ #define PIXEL_COUNT 16
+ #define PIXEL_PIN D2
+ #define PIXEL_TYPE WS2812B
+ 
+ // Parameter 1 = number of pixels in strip
+ // Parameter 2 = pin number (most are valid)
+ //               note: if not specified, D2 is selected for you.
+ // Parameter 3 = pixel type [ WS2812, WS2812B, WS2811, TM1803 ]
+ //               note: if not specified, WS2812B is selected for you.
+ //               note: RGB order is automatically applied to WS2811,
+ //                     WS2812/WS2812B/TM1803 is GRB order.
+ //
+ // 800 KHz bitstream 800 KHz bitstream (most NeoPixel products ...
+ //                         ... WS2812 (6-pin part)/WS2812B (4-pin part) )
+ //
+ // 400 KHz bitstream (classic 'v1' (not v2) FLORA pixels, WS2811 drivers)
+ //                   (Radio Shack Tri-Color LED Strip - TM1803 driver
+ //                    NOTE: RS Tri-Color LED's are grouped in sets of 3)
+ // IMPORTANT: To reduce NeoPixel burnout risk, add 1000 uF capacitor across
+ // pixel power leads, add 300 - 500 Ohm resistor on first pixel's data input
+ // and minimize distance between Arduino and first pixel.  Avoid connecting
+ // on a live circuit...if you must, connect GND first.
+ 
+ //Adafruit_NeoPixel strip = Adafruit_NeoPixel(PIXEL_COUNT, PIXEL_PIN, PIXEL_TYPE);
+ 
+ TCPClient client;*/
 
 #pragma mark - Variable Declarations
 
@@ -52,19 +52,6 @@ byte numberOfShiftRegisters = 4;
 #define MICROSECONDS_TO_MILLISECONDS 1 / 1000.0
 #define MILLISECONDS_TO_SECONDS 1 / 1000.0
 #define MAX_PACKET_LENGTH 32
-
-// The macro below uses 3 instructions per pin to generate the byte to transfer with SPI for the shift registers. Retreive duty cycle setting from memory (ldd, 2 clockcycles). Compare with the counter (cp, 1 clockcycle) --> result is stored in carry. Use the rotate over carry right to shift the compare result into the byte. (1 clockcycle).
-// TL;DR super fast way of doing the following
-// if(pwmValue > counter)
-//      turnOn;
-// else
-//      turnOff;
-#define add_one_pin_to_byte(sendByte, counter, pwmPointer) \
-{ \
-byte pwmValue = *pwmPointer; \
-asm volatile ("cmp %0, %1" : /* No outputs */ : "r" (counter), "r" (pwmValue)); \
-asm volatile ("rrx %0, %1" : "=r" (sendByte) : "r" (sendByte)); 	\
-}
 
 // Phase Frequency Control (PFC) (Zero Cross)
 uint32_t previousZeroCrossTime = 0; // Timestamp in micros() of the latest zero crossing interrupt
@@ -149,14 +136,14 @@ void setup()
     SPI.setDataMode(SPI_MODE3);
     SPI.begin();
     
-    // Initialize Dimming Timer
-    initDimmingTimer();
-    
     // Setup the zero cross interrupt which uses zeroCrossPin (zeroCrossPin can't be changed though)
     attachInterrupt(zeroCrossPin, handleZeroCross, FALLING);
     
     // Init our variables for the appropriate number of shift registers
     initializeWithewShiftRegisterCount();
+    
+    // Initialize Dimming Timer
+    initDimmingTimer();
     
     //strip.begin();
     //strip.show(); // Initialize all pixels to 'off'
@@ -209,44 +196,44 @@ void loop()
 }
 
 /*void ipArrayFromString(byte ipArray[], String ipString)
-{
-    int dot1 = ipString.indexOf('.');
-    ipArray[0] = ipString.substring(0, dot1).toInt();
-    int dot2 = ipString.indexOf('.', dot1 + 1);
-    ipArray[1] = ipString.substring(dot1 + 1, dot2).toInt();
-    dot1 = ipString.indexOf('.', dot2 + 1);
-    ipArray[2] = ipString.substring(dot2 + 1, dot1).toInt();
-    ipArray[3] = ipString.substring(dot1 + 1).toInt();
-}
-
-int connectToMyServer(String ip)
-{
-    byte serverAddress[4];
-    ipArrayFromString(serverAddress, ip);
-    
-    if (client.connect(serverAddress, 9000))
-    {
-        return 1; // successfully connected
-    }
-    else
-    {
-        return -1; // failed to connect
-    }
-}
-
-// This function gets called whenever there is a matching API request
-// the command string format is l<led number>,<state>
-// for example: l1,HIGH or l1,LOW
-//              l2,HIGH or l2,LOW
-int ledControl(String command)
-{
-    // TODO: !!! Fix this and add return 1 or -1 for success or failure
-    //packet = command;
-    //packetLength = command.length();
-    //currentByteIndex = 0;
-    
-    return 1;
-}*/
+ {
+ int dot1 = ipString.indexOf('.');
+ ipArray[0] = ipString.substring(0, dot1).toInt();
+ int dot2 = ipString.indexOf('.', dot1 + 1);
+ ipArray[1] = ipString.substring(dot1 + 1, dot2).toInt();
+ dot1 = ipString.indexOf('.', dot2 + 1);
+ ipArray[2] = ipString.substring(dot2 + 1, dot1).toInt();
+ ipArray[3] = ipString.substring(dot1 + 1).toInt();
+ }
+ 
+ int connectToMyServer(String ip)
+ {
+ byte serverAddress[4];
+ ipArrayFromString(serverAddress, ip);
+ 
+ if (client.connect(serverAddress, 9000))
+ {
+ return 1; // successfully connected
+ }
+ else
+ {
+ return -1; // failed to connect
+ }
+ }
+ 
+ // This function gets called whenever there is a matching API request
+ // the command string format is l<led number>,<state>
+ // for example: l1,HIGH or l1,LOW
+ //              l2,HIGH or l2,LOW
+ int ledControl(String command)
+ {
+ // TODO: !!! Fix this and add return 1 or -1 for success or failure
+ //packet = command;
+ //packetLength = command.length();
+ //currentByteIndex = 0;
+ 
+ return 1;
+ }*/
 
 #pragma mark - Command Processing
 
@@ -632,7 +619,7 @@ void handleZeroCross()
     zeroCrossTimeDifference = currentZeroCrossTime - previousZeroCrossTime;
     
     // Update the dimming interrupt timer
-    dimmingTimer.resetPeriod_SIT((uint16_t)(zeroCrossTimeDifference / (maxBrightness + 1)), uSec);
+    //dimmingTimer.resetPeriod_SIT((uint16_t)(zeroCrossTimeDifference / (maxBrightness + 1)), uSec);
     
     // Handle AC dimming (fading over time)
     updateDimming = 1;
@@ -657,39 +644,23 @@ void handleDimmingTimerInterrupt()
     // Do a whole shift register at once. This unrolls the loop for extra speed
     for(byte i = numberOfShiftRegisters; i > 0; --i)
     {
-        uint32_t byteToSend;  // no need to initialize, all bits are replaced
-        
         // Build the byte. One bit for each channel in this shift register
-        add_one_pin_to_byte(byteToSend, currentBrightnessCounter, --tempPWMValues);
-        add_one_pin_to_byte(byteToSend, currentBrightnessCounter, --tempPWMValues);
-        add_one_pin_to_byte(byteToSend, currentBrightnessCounter, --tempPWMValues);
-        add_one_pin_to_byte(byteToSend, currentBrightnessCounter, --tempPWMValues);
-        add_one_pin_to_byte(byteToSend, currentBrightnessCounter, --tempPWMValues);
-        add_one_pin_to_byte(byteToSend, currentBrightnessCounter, --tempPWMValues);
-        add_one_pin_to_byte(byteToSend, currentBrightnessCounter, --tempPWMValues);
-        add_one_pin_to_byte(byteToSend, currentBrightnessCounter, --tempPWMValues);
+        byte byteToSend = 0x00;
+        if(*(--tempPWMValues) > currentBrightnessCounter)
+        {
+            byteToSend |= 0b10000000;
+        }
+        for(byte i2 = 1; i2 < 8; i2 ++)
+        {
+            byteToSend >>= 1;
+            if(*(--tempPWMValues) > currentBrightnessCounter)
+            {
+                byteToSend |= 0b10000000;
+            }
+        }
         
         // Send the byte to the SPI
-        SPI.transfer(byteToSend >> 24);
-        
-        // Build the byte. One bit for each channel in this shift register
-        /*byte byteToSend = 0x00;
-         if(*(--tempPWMValues) > currentBrightnessCounter)
-         {
-         byteToSend |= 0b10000000;
-         }
-         for(byte i2 = 1; i2 < 8; i2 ++)
-         {
-         byteToSend >>= 1;
-         if(*(--tempPWMValues) > currentBrightnessCounter)
-         {
-         byteToSend |= 0b10000000;
-         }
-         }
-         
-         // Send the byte to the SPI
-         SPI.transfer(byteToSend);
-         */
+        SPI.transfer(byteToSend);
     }
     
     // Write shift register latch clock high
