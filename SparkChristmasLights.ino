@@ -2,7 +2,7 @@
 #include "SparkIntervalTimer/SparkIntervalTimer.h"
 
 // This #include statement was automatically added by the Spark IDE.
-#include "neopixel/neopixel.h"
+/*#include "neopixel/neopixel.h"
 
 #include "documentation.h"
 
@@ -32,19 +32,7 @@
 
 //Adafruit_NeoPixel strip = Adafruit_NeoPixel(PIXEL_COUNT, PIXEL_PIN, PIXEL_TYPE);
 
-TCPClient client;
-
-
-
-
-
-
-
-
-
-
-
-
+TCPClient client;*/
 
 #pragma mark - Variable Declarations
 
@@ -139,8 +127,8 @@ void dimmingUpdate();
 
 void setup()
 {
-    Spark.function("led", ledControl);
-    Spark.function("connect", connectToMyServer);
+    //Spark.function("led", ledControl);
+    //Spark.function("connect", connectToMyServer);
     
     // Setup our pins
     pinMode(zeroCrossPin, INPUT);
@@ -219,7 +207,7 @@ void loop()
     }
 }
 
-void ipArrayFromString(byte ipArray[], String ipString)
+/*void ipArrayFromString(byte ipArray[], String ipString)
 {
     int dot1 = ipString.indexOf('.');
     ipArray[0] = ipString.substring(0, dot1).toInt();
@@ -257,7 +245,7 @@ int ledControl(String command)
     //currentByteIndex = 0;
     
     return 1;
-}
+}*/
 
 #pragma mark - Command Processing
 
