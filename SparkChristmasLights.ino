@@ -54,9 +54,9 @@ byte numberOfShiftRegisters = 4;
 #define MAX_PACKET_LENGTH 32
 
 // Phase Frequency Control (PFC) (Zero Cross)
-uint32_t previousZeroCrossTime = 0; // Timestamp in micros() of the latest zero crossing interrupt
-uint32_t currentZeroCrossTime = 0; // Timestamp in micros() of the previous zero crossing interrupt
-uint32_t zeroCrossTimeDifference =  8333; // 120Hz The calculated micros() between the last two zero crossings
+volatile uint32_t previousZeroCrossTime = 0; // Timestamp in micros() of the latest zero crossing interrupt
+volatile uint32_t currentZeroCrossTime = 0; // Timestamp in micros() of the previous zero crossing interrupt
+volatile uint32_t zeroCrossTimeDifference =  8333; // 120Hz The calculated micros() between the last two zero crossings
 const int zeroCrossPin = A6;
 IntervalTimer dimmingTimer;
 
@@ -115,12 +115,6 @@ void dimmingUpdate();
 
 void setup()
 {
-    //Spark.function("led", ledControl);
-    //Spark.function("connect", connectToMyServer);
-    
-    // Setup our pins
-    pinMode(zeroCrossPin, INPUT);
-    
     // Adjust the minimumBrightness for AC lights
     if(AC_LIGHTS)
     {
@@ -132,18 +126,22 @@ void setup()
     
     // SPI Setup
     SPI.setBitOrder(LSBFIRST);
-    SPI.setClockDivider(SPI_CLOCK_DIV16);
+    SPI.setClockDivider(SPI_CLOCK_DIV4); // = 72MHz/4 = 18MHz
     SPI.setDataMode(SPI_MODE3);
     SPI.begin();
-    
-    // Setup the zero cross interrupt which uses zeroCrossPin (zeroCrossPin can't be changed though)
-    attachInterrupt(zeroCrossPin, handleZeroCross, FALLING);
     
     // Init our variables for the appropriate number of shift registers
     initializeWithewShiftRegisterCount();
     
     // Initialize Dimming Timer
     initDimmingTimer();
+    
+    // Setup the zero cross interrupt which uses zeroCrossPin
+    pinMode(zeroCrossPin, INPUT);
+    attachInterrupt(zeroCrossPin, handleZeroCross, FALLING);
+    
+    //Spark.function("led", ledControl);
+    //Spark.function("connect", connectToMyServer);
     
     //strip.begin();
     //strip.show(); // Initialize all pixels to 'off'
@@ -618,8 +616,16 @@ void handleZeroCross()
     currentZeroCrossTime = micros();
     zeroCrossTimeDifference = currentZeroCrossTime - previousZeroCrossTime;
     
+    if(millis() % 1000 >= 0 && millis() % 1000 < 8)
+    {
+        Serial.print("micros:");
+        Serial.println(micros());
+        Serial.print("zc:");
+        Serial.println(zeroCrossTimeDifference);
+    }
+    
     // Update the dimming interrupt timer
-    //dimmingTimer.resetPeriod_SIT((uint16_t)(zeroCrossTimeDifference / (maxBrightness + 1)), uSec);
+    dimmingTimer.resetPeriod_SIT((uint16_t)(8333 / (maxBrightness + 1)), uSec);
     
     // Handle AC dimming (fading over time)
     updateDimming = 1;
@@ -641,6 +647,8 @@ void handleDimmingTimerInterrupt()
     //digitalWrite(latchPin, LOW);
     PIN_MAP[latchPin].gpio_peripheral->BRR = PIN_MAP[latchPin].gpio_pin;  // LOW
     
+    // Write bogus bit to the SPI, because in the loop there is a receive before send.
+    //SPI_I2S_SendData(SPI1, 0x00);
     // Do a whole shift register at once. This unrolls the loop for extra speed
     for(byte i = numberOfShiftRegisters; i > 0; --i)
     {
@@ -661,6 +669,13 @@ void handleDimmingTimerInterrupt()
         
         // Send the byte to the SPI
         SPI.transfer(byteToSend);
+        
+        /* Wait for SPI1 data reception */
+        //while (SPI_I2S_GetFlagStatus(SPI1, SPI_I2S_FLAG_RXNE) == RESET);
+        /* Wait for SPI1 Tx buffer empty */
+        //while (SPI_I2S_GetFlagStatus(SPI1, SPI_I2S_FLAG_TXE) == RESET);
+        /* Send SPI1 data */
+        //SPI_I2S_SendData(SPI1, byteToSend);
     }
     
     // Write shift register latch clock high
