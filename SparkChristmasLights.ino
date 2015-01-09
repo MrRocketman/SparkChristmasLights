@@ -644,11 +644,8 @@ void handleDimmingTimerInterrupt()
     byte *tempPWMValues = &pwmValues[numberOfChannels];
     
     // Write shift register latch clock low
-    //digitalWrite(latchPin, LOW);
-    PIN_MAP[latchPin].gpio_peripheral->BRR = PIN_MAP[latchPin].gpio_pin;  // LOW
+    //PIN_MAP[latchPin].gpio_peripheral->BRR = PIN_MAP[latchPin].gpio_pin;  // LOW
     
-    // Write bogus bit to the SPI, because in the loop there is a receive before send.
-    //SPI_I2S_SendData(SPI1, 0x00);
     // Do a whole shift register at once. This unrolls the loop for extra speed
     for(byte i = numberOfShiftRegisters; i > 0; --i)
     {
@@ -668,19 +665,11 @@ void handleDimmingTimerInterrupt()
         }
         
         // Send the byte to the SPI
-        SPI.transfer(byteToSend);
-        
-        /* Wait for SPI1 data reception */
-        //while (SPI_I2S_GetFlagStatus(SPI1, SPI_I2S_FLAG_RXNE) == RESET);
-        /* Wait for SPI1 Tx buffer empty */
-        //while (SPI_I2S_GetFlagStatus(SPI1, SPI_I2S_FLAG_TXE) == RESET);
-        /* Send SPI1 data */
-        //SPI_I2S_SendData(SPI1, byteToSend);
+        //SPI.transfer(byteToSend);
     }
     
     // Write shift register latch clock high
-    //digitalWrite(latchPin, HIGH);
-    PIN_MAP[latchPin].gpio_peripheral->BSRR = PIN_MAP[latchPin].gpio_pin; // HIGH
+    //PIN_MAP[latchPin].gpio_peripheral->BSRR = PIN_MAP[latchPin].gpio_pin; // HIGH
     
     // Decrease the brightness index. This is the key to getting AC dimming since triacs stay on until the next zero cross. So we need to turn on after a delay rather than turn on immediately and turn off after a delay. AKA, this needs to count down not up. Trust me!
     if(currentBrightnessCounter > 0)
