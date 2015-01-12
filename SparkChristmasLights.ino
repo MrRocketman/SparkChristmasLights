@@ -43,7 +43,8 @@
 
 // Board specific variables! Change these per board!,
 byte numberOfShiftRegisters = 4;
-#define AC_LIGHTS 1 // Set to 0 for DC lights
+#define AC_LIGHTS // AC or DC. Not both!
+//#define DC_LIGHTS
 
 /////////////////////////////////////////////////////////////////////////////////////////////
 // Don't change any variables below here unless you really, really know what you are doing //
@@ -57,7 +58,9 @@ byte numberOfShiftRegisters = 4;
 volatile uint32_t previousZeroCrossTime = 0; // Timestamp in micros() of the latest zero crossing interrupt
 volatile uint32_t currentZeroCrossTime = 0; // Timestamp in micros() of the previous zero crossing interrupt
 volatile uint32_t zeroCrossTimeDifference =  8333; // 120Hz The calculated micros() between the last two zero crossings
-const int zeroCrossPin = A6;
+const int zeroCrossPin = D3;
+
+// Main timer
 IntervalTimer dimmingTimer;
 
 // Serial Packet Variables
@@ -71,8 +74,8 @@ byte currentByteIndex = 0;
 const int latchPin = A2;
 
 // Shift Register
-byte maxBrightness = 255;
-byte minBrightness = 0; // compensates for no light at < 20% dim. 14 for AC, 0 for DC
+byte maxBrightness = 254;
+byte minBrightness = 14; // compensates for no light at < 20% dim. 14 for AC, 0 for DC
 byte numberOfChannels = 0;
 byte *pwmValues = 0;
 volatile byte currentBrightnessCounter = maxBrightness;
@@ -106,39 +109,42 @@ void handleZeroCross();
 // ShiftRegister
 void handleDimmingTimerInterrupt();
 void initDimmingTimer();
-void printInterruptLoad();
 
 // Dimming
 void dimmingUpdate();
+
+SYSTEM_MODE(MANUAL);
 
 #pragma mark - Setup And Main Loop
 
 void setup()
 {
-    // Adjust the minimumBrightness for AC lights
-    if(AC_LIGHTS)
-    {
-        minBrightness = 14;
-    }
+    Spark.connect();
+    
+    // Adjust the frequency to 60Hz for DC lights
+#ifdef DC_LIGHTS
+    minBrightness = 0;
+    zeroCrossTimeDifference = 16666;
+#endif
     
     // Serial setup
-    Serial.begin(57600); // Xbee doesn't like to run any faster than 57600 for sustained throughput!
+    Serial.begin(57600);
     
     // SPI Setup
     SPI.setBitOrder(LSBFIRST);
-    SPI.setClockDivider(SPI_CLOCK_DIV4); // = 72MHz/4 = 18MHz
+    SPI.setClockDivider(SPI_CLOCK_DIV16); // = 72MHz/4 = 18MHz
     SPI.setDataMode(SPI_MODE3);
-    SPI.begin();
+    SPI.begin(latchPin);
     
     // Init our variables for the appropriate number of shift registers
     initializeWithewShiftRegisterCount();
     
-    // Initialize Dimming Timer
-    initDimmingTimer();
-    
     // Setup the zero cross interrupt which uses zeroCrossPin
     pinMode(zeroCrossPin, INPUT);
     attachInterrupt(zeroCrossPin, handleZeroCross, FALLING);
+    
+    // Initialize Dimming Timer
+    initDimmingTimer();
     
     //Spark.function("led", ledControl);
     //Spark.function("connect", connectToMyServer);
@@ -157,7 +163,19 @@ void loop()
      }
      }*/
     
-    // Handle dimming
+    if(millis() % 1000 >= 0 && millis() % 1000 < 4)
+    {
+        Spark.process();
+        Serial.println("Spark");
+    }
+    
+    if(zeroCrossTimeDifference < 7500)
+    {
+        Serial.print("zc:");
+        Serial.println(zeroCrossTimeDifference);
+    }
+    
+    // Handle dimming (fading over time)
     if(updateDimming)
     {
         dimmingUpdate();
@@ -616,26 +634,19 @@ void handleZeroCross()
     currentZeroCrossTime = micros();
     zeroCrossTimeDifference = currentZeroCrossTime - previousZeroCrossTime;
     
-    if(millis() % 1000 >= 0 && millis() % 1000 < 8)
-    {
-        Serial.print("micros:");
-        Serial.println(micros());
-        Serial.print("zc:");
-        Serial.println(zeroCrossTimeDifference);
-    }
-    
     // Update the dimming interrupt timer
-    dimmingTimer.resetPeriod_SIT((uint16_t)(8333 / (maxBrightness + 1)), uSec);
+    //dimmingTimer.resetPeriod_SIT((uint16_t)(zeroCrossTimeDifference / (maxBrightness + 1)), uSec);
+    //TIM2->ARR = (uint16_t)(zeroCrossTimeDifference / (maxBrightness + 1));
     
     // Handle AC dimming (fading over time)
-    updateDimming = 1;
+    //updateDimming = 1;
 }
 
 #pragma mark - Shift Register
 
 void initDimmingTimer()
 {
-    dimmingTimer.begin(handleDimmingTimerInterrupt, (uint16_t)(zeroCrossTimeDifference / (maxBrightness + 1)), uSec);
+    dimmingTimer.begin(handleDimmingTimerInterrupt, (uint16_t)(zeroCrossTimeDifference / (maxBrightness + 1)), uSec, TIMER2);
 }
 
 void handleDimmingTimerInterrupt()
@@ -644,21 +655,20 @@ void handleDimmingTimerInterrupt()
     byte *tempPWMValues = &pwmValues[numberOfChannels];
     
     // Write shift register latch clock low
-    //PIN_MAP[latchPin].gpio_peripheral->BRR = PIN_MAP[latchPin].gpio_pin;  // LOW
+    PIN_MAP[latchPin].gpio_peripheral->BRR = PIN_MAP[latchPin].gpio_pin;
+    
+    // Write bogus bit to the SPI, because in the loop there is a receive before send.
+    SPI_I2S_SendData(SPI1, 0x00);
     
     // Do a whole shift register at once. This unrolls the loop for extra speed
     for(byte i = numberOfShiftRegisters; i > 0; --i)
     {
         // Build the byte. One bit for each channel in this shift register
         byte byteToSend = 0x00;
-        if(*(--tempPWMValues) > currentBrightnessCounter)
-        {
-            byteToSend |= 0b10000000;
-        }
-        for(byte i2 = 1; i2 < 8; i2 ++)
+        for(byte i2 = 0; i2 < 8; i2 ++)
         {
             byteToSend >>= 1;
-            if(*(--tempPWMValues) > currentBrightnessCounter)
+            if(64 > currentBrightnessCounter)//*(--tempPWMValues) > currentBrightnessCounter)
             {
                 byteToSend |= 0b10000000;
             }
@@ -666,20 +676,32 @@ void handleDimmingTimerInterrupt()
         
         // Send the byte to the SPI
         //SPI.transfer(byteToSend);
+        
+        // Wait for SPI1 data reception
+        while (SPI_I2S_GetFlagStatus(SPI1, SPI_I2S_FLAG_RXNE) == RESET);
+        // Wait for SPI1 Tx buffer empty
+        //while (SPI_I2S_GetFlagStatus(SPI1, SPI_I2S_FLAG_TXE) == RESET);
+        // Send SPI1 data
+        SPI_I2S_SendData(SPI1, byteToSend);
     }
     
     // Write shift register latch clock high
-    //PIN_MAP[latchPin].gpio_peripheral->BSRR = PIN_MAP[latchPin].gpio_pin; // HIGH
+    PIN_MAP[latchPin].gpio_peripheral->BSRR = PIN_MAP[latchPin].gpio_pin;
     
-    // Decrease the brightness index. This is the key to getting AC dimming since triacs stay on until the next zero cross. So we need to turn on after a delay rather than turn on immediately and turn off after a delay. AKA, this needs to count down not up. Trust me!
+    // Decrease the brightness counter. This is the key to getting AC dimming since triacs stay on until the next zero cross. So we need to turn on after a delay rather than turn on immediately and turn off after a delay. AKA, this needs to count down not up. Trust me!
     if(currentBrightnessCounter > 0)
     {
         currentBrightnessCounter --;
     }
     else
     {
-        // Handle DC dimming (fading over time)
+        // Reset the brightness index to be in phase with the zero cross
+        currentBrightnessCounter = maxBrightness;
+        
+#ifdef DC_LIGHTS
+        // Handle DC dimming (fading over time) (Every 120Hz)
         updateDimming = 1;
+#endif
     }
 }
 
@@ -687,9 +709,6 @@ void handleDimmingTimerInterrupt()
 
 void dimmingUpdate()
 {
-    // Reset the brightness index to be in phase with the zero cross
-    currentBrightnessCounter = maxBrightness;
-    
 #ifdef TESTING
     dimmingTest();
 #endif
